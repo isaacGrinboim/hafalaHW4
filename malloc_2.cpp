@@ -1,6 +1,5 @@
 #include <unistd.h>
 #include <cstring>
-
 int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
 int freeBytes = 0;
@@ -96,7 +95,6 @@ typedef struct MallocMetadata {
  MallocMetadata* prev;
 }Tag;
 
-
 size_t _num_free_blocks(){
     return freeBlocks;
 }
@@ -115,4 +113,3 @@ size_t _num_meta_data_bytes(){
 size_t _size_meta_data(){
     return TagSize;
 }
-//hello world
