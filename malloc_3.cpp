@@ -1,15 +1,14 @@
 #include <unistd.h>
 #include <cstring>
-#include <cstdlib>
+
+
+
 int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
 int freeBytes = 0;
 int freeBlocks = 0;
 int allocatedBlocks = 0;
 int allocatedBytes = 0;
-int MEMSIZE = 0x000400000;
-int BLOCKSIZE = 0x20000;
-int Cookie = rand();
 
 Tag* blockListHead = NULL;
 Tag* blockListTail = NULL;
@@ -124,29 +123,3 @@ size_t _size_meta_data(){
 
 
 
-void initialMetaData(Tag* tag){
- tag->cookie = Cookie;
- tag->size = BLOCKSIZE - TagSize;
- tag ->is_free = true;
- tag->prev = NULL;
- tag->next = NULL;
- }
-
-void* allign(){
-    void* start = sbrk(0);
-    int inv = MEMSIZE - (unsigned long)start%MEMSIZE;
-    return sbrk(inv);
-}
-void initializeMem(){
-    void* start = allign();
-    void* end = sbrk(MEMSIZE);
-
-    for(int i=0; i<32; ++i){
-        Tag* toInit = (Tag*)((char*)start+i*BLOCKSIZE);
-        initialMetaData(toInit);
-        if(i==0){toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE); continue;}
-        if(i!=31){ toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE); continue;}
-        toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE);
-        toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE);
-    }
-}
