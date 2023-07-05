@@ -1,6 +1,9 @@
 #include <unistd.h>
 #include <cstring>
 #include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
 int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
 int freeBytes = 0;
@@ -21,57 +24,29 @@ void trimmBlock(Tag* block, int size);
 Tag* blockListHead = NULL;
 Tag* blockListTail = NULL;
 
-void* mmapAlloc(size_t size){
-    if(size == 0 || size > 1e8){
-        return NULL;
-    }
-    void* pointerRes = sbrk(size + TagSize);
-    if (pointerRes == (void*)-1){
-        return NULL;
-    }
-    else{
-        return pointerRes;
-    }
-}
+
 void* smalloc(size_t size){
     initializeMem();
     if(size == 0 || size > 1e8){
         return NULL;
     }
-
+    if(size >= BLOCKSIZE){
+        return mmapAlloc(size);
+    }
     //(currTag->size + TagSize)/2 - TagSize >= size
     // <=>
     //(currTag->size + TagSize) >= (size + TagSize)*2
-        Tag* currTag = blockListHead;
-        while(currTag != NULL){
-            if(currTag->size >= size && currTag->is_free){
-                if(currTag->size > 2*(size +TagSize)- TagSize){ // newwwwww
-                   trimmBlock(currTag, size); 
-                }
-                currTag->is_free = false;
-                freeBlocks--;
-                freeBytes -= size;
-                return (char*)currTag + TagSize;
+        Tag* bestFit = smallestFits(size);
+        if(bestFit->size >= size && bestFit->is_free){
+            if(bestFit->size > 2*(size +TagSize)- TagSize){ // newwwwww
+                trimmBlock(bestFit, size); 
             }
-            currTag = currTag->next;
+            bestFit->is_free = false;
+            freeBlocks--;
+            freeBytes -= size;
+            return (char*)bestFit + TagSize;
         }
-
-    void* res = realAlloc(size);
-    if(res == NULL){
-        return NULL;
-    }
-    ((Tag*)res)->is_free = false;
-    ((Tag*)res)->size = size;
-    ((Tag*)res)->next = NULL;
-    ((Tag*)res)->prev = blockListTail;
-    if(blockListHead == NULL){
-        blockListHead = (Tag*)res;
-    } 
-    blockListTail = (Tag*)res;
-    numTags++;
-    allocatedBlocks++;
-    allocatedBytes += (size+TagSize);
-    return (char*)res+TagSize;
+    return NULL;
 }
 void* scalloc(size_t num, size_t size){
     if(size == 0 || num == 0 || size*num > 1e8){
@@ -85,27 +60,34 @@ void* scalloc(size_t num, size_t size){
     return res;
 }
 void sfree(void* p){
-    if(p != NULL){
-        Tag* tag = (Tag*)((char*)p-TagSize);
-        tag->is_free = true;
+    if(p==NULL){return;}
+    Tag* pTag = (Tag*)((char*)p-TagSize);
+    if(pTag->size >= BLOCKSIZE){
+        mmapFree(pTag);                     // munmap
     }
+    pTag->is_free = true;
+    uniteBuddies(pTag);
 }
 void* srealloc(void* oldp, size_t size){
     if(size == 0 || size > 1e8){
         return NULL;
     }
+
     Tag* oldTag = (Tag*)((char*)oldp - TagSize);
     if(size <= oldTag->size){
         return oldp;
     }
-    void* res = smalloc(size);
+    //try uniteBuddis for realloc
+
+    void* res = smalloc(size);// 
     if(res == NULL){
         return NULL;
     }
+
     std::memmove(res, oldp, oldTag->size);
     oldTag->is_free = true;
     freeBytes += oldTag->size;
-    freeBlocks += 1; 
+    freeBlocks += 1;
 }
 
 typedef struct MallocMetadata {
@@ -187,6 +169,9 @@ void trimmBlock(Tag* block, int size){
     while(block->size > 2*(size +TagSize)- TagSize){
         int newSize = block->size/2;// assuming a whole number 
         Tag* rightTag = (Tag*)((char*)block + newSize);
+        if(block == blockListTail){
+            blockListTail = rightTag;
+        }
         rightTag->next = block->next;
         block->next = rightTag;
         block->size = newSize;
@@ -197,4 +182,47 @@ void trimmBlock(Tag* block, int size){
         freeBlocks++;//jjjjjjjjjjjjjjjjjjj1
         freeBytes-=TagSize;//jjjjjjjjjjjjjjjjjjjjj2
     }
+}
+
+
+Tag* smallestFits(int size){
+    Tag* current = blockListHead;
+    Tag* bestFit = blockListHead;
+    while(current != NULL){
+        if(current->size >= size && (current->size < bestFit->size)){
+            bestFit = current;
+        }
+        current = current->next;
+    }
+    return bestFit;
+}
+
+void* mmapAlloc(int size){
+    void* block = mmap(NULL,size+TagSize, PROT_READ | PROT_WRITE, MAP_ANON, -1, 0);
+    if (block == MAP_FAILED) {
+        return NULL;
+    }
+    ((Tag*)block)->prev = NULL;
+    ((Tag*)block)->next = NULL;
+    ((Tag*)block)->cookie = Cookie;
+    ((Tag*)block)->is_free = false;
+    ((Tag*)block)->size = size;
+    return (char*)block + TagSize;
+}
+
+void uniteBuddies(Tag* tag){
+    Tag* buddy =   (Tag*)((unsigned long)tag ^ (unsigned long)tag->size);
+    while(tag->size < (BLOCKSIZE-TagSize) && buddy->is_free){
+        Tag* left = buddy<tag ? buddy:tag ;
+        Tag* right = buddy==left ? tag : buddy ;
+        left->size += TagSize+right->size;
+        left->next = right->next;
+        if(right->next != NULL)
+            (right->next)->prev = left;
+        tag = left;
+    }
+}
+
+void mmapFree(void* address){
+    munmap(address, ((Tag*)address)->size+TagSize);
 }

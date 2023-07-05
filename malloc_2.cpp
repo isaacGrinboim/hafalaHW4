@@ -83,7 +83,7 @@ void* srealloc(void* oldp, size_t size){
         return oldp;
     }
     void* res = smalloc(size);
-    if(res == NULL){
+    if(res == NULL){ // oldp |_________________________CHECK|
         return NULL;
     }
     std::memmove(res, oldp, oldTag->size);
