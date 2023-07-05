@@ -1,20 +1,27 @@
 #include <unistd.h>
 #include <cstring>
-
-
-
+#include <cstdlib>
 int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
 int freeBytes = 0;
 int freeBlocks = 0;
 int allocatedBlocks = 0;
 int allocatedBytes = 0;
+const int MEMSIZE = 0x0400000;
+const int BLOCKSIZE = 0x20000;
+int Cookie = rand();
 bool wasMemoryInitialized = false;
+
+/********FUNCTION DEFINITIONS************/
+void trimmBlock(Tag* block, int size);
+
+
+
 
 Tag* blockListHead = NULL;
 Tag* blockListTail = NULL;
 
-void* realAlloc(size_t size){
+void* mmapAlloc(size_t size){
     if(size == 0 || size > 1e8){
         return NULL;
     }
@@ -27,12 +34,20 @@ void* realAlloc(size_t size){
     }
 }
 void* smalloc(size_t size){
+    initializeMem();
     if(size == 0 || size > 1e8){
         return NULL;
     }
+
+    //(currTag->size + TagSize)/2 - TagSize >= size
+    // <=>
+    //(currTag->size + TagSize) >= (size + TagSize)*2
         Tag* currTag = blockListHead;
         while(currTag != NULL){
             if(currTag->size >= size && currTag->is_free){
+                if(currTag->size > 2*(size +TagSize)- TagSize){ // newwwwww
+                   trimmBlock(currTag, size); 
+                }
                 currTag->is_free = false;
                 freeBlocks--;
                 freeBytes -= size;
@@ -40,6 +55,7 @@ void* smalloc(size_t size){
             }
             currTag = currTag->next;
         }
+
     void* res = realAlloc(size);
     if(res == NULL){
         return NULL;
@@ -124,3 +140,61 @@ size_t _size_meta_data(){
 
 
 
+void initialMetaData(Tag* tag){
+ tag->cookie = Cookie;
+ tag->size = BLOCKSIZE - TagSize;
+ tag ->is_free = true;
+ tag->prev = NULL;
+ tag->next = NULL;
+ }
+
+
+
+
+
+
+void* allign(){
+    void* start = sbrk(0);
+    int inv = MEMSIZE - (unsigned long)start%MEMSIZE;
+    return sbrk(inv);
+}
+void initializeMem(){
+    if(wasMemoryInitialized)return;
+    void* start = allign();
+    void* end = sbrk(MEMSIZE);
+
+    for(int i=0; i<32; ++i){
+        Tag* toInit = (Tag*)((char*)start+i*BLOCKSIZE);
+        initialMetaData(toInit);
+        if(i==0){
+            blockListHead = toInit;
+            toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE);
+            continue;
+            }
+        if(i==31){
+            toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE);
+            toInit->next = NULL;
+            continue;
+            }
+        toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE);
+        toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE);
+    }
+    wasMemoryInitialized = true;
+}
+
+
+void trimmBlock(Tag* block, int size){
+    while(block->size > 2*(size +TagSize)- TagSize){
+        int newSize = block->size/2;// assuming a whole number 
+        Tag* rightTag = (Tag*)((char*)block + newSize);
+        rightTag->next = block->next;
+        block->next = rightTag;
+        block->size = newSize;
+        rightTag->is_free = true;
+        rightTag->prev = block;
+        rightTag->size = newSize;
+        rightTag->cookie = Cookie;
+        freeBlocks++;//jjjjjjjjjjjjjjjjjjj1
+        freeBytes-=TagSize;//jjjjjjjjjjjjjjjjjjjjj2
+    }
+}

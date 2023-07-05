@@ -9,6 +9,7 @@ int freeBytes = 0;
 int freeBlocks = 0;
 int allocatedBlocks = 0;
 int allocatedBytes = 0;
+bool wasMemoryInitialized = false;
 
 Tag* blockListHead = NULL;
 Tag* blockListTail = NULL;
