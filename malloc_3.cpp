@@ -13,12 +13,12 @@ typedef struct MallocMetadata {
 }Tag;
 const int MEMSIZE = 0x0400000;
 const int BLOCKSIZE = 0x20000;
-int numTags = 32;
+int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
-int freeBytes =  32*(BLOCKSIZE-TagSize);
-int freeBlocks = 32;
-int allocatedBlocks = 32;
-int allocatedBytes = 32*(BLOCKSIZE-TagSize);
+int freeBytes = 0;
+int freeBlocks = 0;
+int allocatedBlocks = 0;
+int allocatedBytes = 0;
 
 int Cookie = rand();
 bool wasMemoryInitialized = false;
@@ -167,7 +167,7 @@ void* allign(){
 void initializeMem(){
     if(wasMemoryInitialized)return;
     void* start = allign();
-    //void* end = sbrk(MEMSIZE);
+    start = sbrk(MEMSIZE);
 
     for(int i=0; i<32; ++i){
         Tag* toInit = (Tag*)((char*)start+i*BLOCKSIZE);
