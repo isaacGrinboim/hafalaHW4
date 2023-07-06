@@ -1,5 +1,13 @@
 #include <unistd.h>
 #include <cstring>
+typedef struct MallocMetadata
+{
+    int cookie;
+    size_t size;
+    bool is_free;
+    MallocMetadata *next;
+    MallocMetadata *prev;
+} Tag;
 
 int numTags = 0;
 int TagSize = sizeof(MallocMetadata);
@@ -18,7 +26,7 @@ void *realAlloc(size_t size)
         return NULL;
     }
     void *pointerRes = sbrk(size + TagSize);
-    if (pointerRes == (void *)-1)
+    if (pointerRes == (void*)-1)
     {
         return NULL;
     }
@@ -44,7 +52,7 @@ void *smalloc(size_t size)
             currTag->is_free = false;
             freeBlocks--;
             freeBytes -= size;
-            return (char *)currTag + TagSize;
+            return (char*)currTag + TagSize;//                       change
         }
         currTag = currTag->next;
     }
@@ -52,6 +60,9 @@ void *smalloc(size_t size)
     if (res == NULL)
     {
         return NULL;
+    }
+    if(blockListTail != NULL){
+        blockListTail->next = (Tag*)res;
     }
     ((Tag *)res)->is_free = false;
     ((Tag *)res)->size = size;
@@ -80,6 +91,7 @@ void *scalloc(size_t num, size_t size)
     return res;
 }
 void sfree(void *p)
+
 {
     if (p != NULL)
     {
@@ -91,9 +103,13 @@ void sfree(void *p)
 }
 void *srealloc(void *oldp, size_t size)
 {
+
     if (size == 0 || size > 1e8)
     {
         return NULL;
+    }
+    if(oldp == NULL){
+        return smalloc(size);
     }
     Tag *oldTag = (Tag *)((char *)oldp - TagSize);
     if (size <= oldTag->size)
@@ -106,17 +122,11 @@ void *srealloc(void *oldp, size_t size)
         return NULL;
     }
     std::memmove(res, oldp, oldTag->size);
-    oldTag->is_free = true;
+    sfree(oldp);
+    return res;
 }
 
-typedef struct MallocMetadata
-{
-    int cookie;
-    size_t size;
-    bool is_free;
-    MallocMetadata *next;
-    MallocMetadata *prev;
-} Tag;
+
 
 size_t _num_free_blocks()
 {
