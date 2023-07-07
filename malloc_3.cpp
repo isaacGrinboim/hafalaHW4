@@ -4,82 +4,105 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-typedef struct MallocMetadata {
- int cookie;
- size_t size;
- bool is_free;
- MallocMetadata* next;
- MallocMetadata* prev;
-}Tag;
-const int MEMSIZE = 0x0400000;
-const int BLOCKSIZE = 0x20000;
-int numTags = 0;
-int TagSize = sizeof(MallocMetadata);
-int freeBytes = 0;
-int freeBlocks = 0;
-int allocatedBlocks = 0;
-int allocatedBytes = 0;
+#include <iostream>
 
-int Cookie = rand();
+typedef struct MallocMetadata {
+    size_t cookie;
+    size_t size;
+    bool is_free;
+    MallocMetadata *next;
+    MallocMetadata *prev;
+
+    explicit MallocMetadata() = default;
+} Tag;
+const size_t MEMSIZE = 0x0400000;
+const size_t BLOCKSIZE = 0x20000;
+size_t numTags = 0;
+size_t TagSize = sizeof(MallocMetadata);
+size_t freeBytes = 0;
+size_t freeBlocks = 0;
+size_t allocatedBlocks = 0;
+size_t allocatedBytes = 0;
+
+size_t Cookie = rand();
 bool wasMemoryInitialized = false;
 
 /********FUNCTION DEFINITIONS************/
-void trimmBlock(Tag* block, int size);
-Tag* myBuddy(Tag* tag, int size);
-Tag* smallestFits(int size);
-bool checkMyBuddies(Tag* tag, int destSize);
-void mmapFree(void* address);
-Tag* uniteBuddies(Tag* tag);
-void* mmapAlloc(int size);
+void trimmBlock(Tag *block, size_t size);
+
+Tag *myBuddy(Tag *tag, size_t size);
+
+Tag *smallestFits(size_t size);
+
+bool checkMyBuddies(Tag *tag, size_t destSize);
+
+void mmapFree(void *address);
+
+Tag *uniteBuddies(Tag *tag);
+
+void *mmapAlloc(size_t size);
+
 void initializeMem();
-void* allign();
-void initialMetaData(Tag* tag);
+
+void *allign();
+
+void initialMetaData(Tag *tag);
+
 /***************************************/
 
-Tag* blockListHead = NULL;
-Tag* blockListTail = NULL;
+Tag *blockListHead = NULL;
+Tag *blockListTail = NULL;
 
 
-void* smalloc(size_t size){
+void *smalloc(size_t size) {
     initializeMem();
-    if(size == 0 || size > 1e8){
+    if (size == 0 || size > 1e8) {
         return NULL;
     }
-    if(size >= BLOCKSIZE){
+    if (size >= BLOCKSIZE) {
         return mmapAlloc(size);
     }
     //(currTag->size + TagSize)/2 - TagSize >= size
     // <=>
     //(currTag->size + TagSize) >= (size + TagSize)*2
-        Tag* bestFit = smallestFits(size);
-        if(bestFit->size >= size && bestFit->is_free){
-            if(bestFit->size > 2*(size +TagSize)- TagSize){ // newwwwww
-                trimmBlock(bestFit, size); 
-            }
-            bestFit->is_free = false;
-            freeBlocks--;
-            freeBytes -= size;
-            return (char*)bestFit + TagSize;
-        }
-    return NULL;
+        std::cout<<"smalloc falls" << std::endl;
+
+    Tag *bestFit = smallestFits(size);
+    std::cout<<"after fall" << std::endl;
+    if(bestFit == NULL){return NULL;}
+
+    std::cout<<"block size: " << bestFit->size << " | desired size: "<< size << std::endl;
+    trimmBlock(bestFit, size);
+
+    bestFit->is_free = false;
+    freeBlocks--;
+    freeBytes -= bestFit->size;
+    return (char*)bestFit + TagSize;
 }
-void* scalloc(size_t num, size_t size){
-    initializeMem();
-    if(size == 0 || num == 0 || size*num > 1e8){
+
+void *scalloc(size_t num, size_t size) {
+    std::cout<<"calloc size: "<< num*size << std::endl;
+    if (size == 0 || num == 0 || size * num > 1e8) {
         return NULL;
     }
-    void* res = smalloc(size*num);
-    if(res == NULL){
+    std::cout<<"HERE" << std::endl;
+
+    void *res = smalloc(size * num);
+    std::cout<<"after smalloc" << std::endl;
+    if (res == NULL) {
         return NULL;
     }
-    memset(res, 0, size*num);
+    memset(res, 0, size * num);
     return res;
 }
-void sfree(void* p){
-    initializeMem();
-    if(p==NULL){return;}
-    Tag* pTag = (Tag*)((char*)p-TagSize);
-    if(pTag->size >= BLOCKSIZE){
+
+void sfree(void *p) {
+    if (p == NULL) { return; }
+    Tag *pTag = (Tag *) ((char *) p - TagSize);
+    if(pTag == NULL){ return; }
+    if (pTag->is_free)
+        return;
+    if (pTag->size >= BLOCKSIZE) {
         mmapFree(pTag);
         return;                     // munmap
     }
@@ -89,27 +112,27 @@ void sfree(void* p){
     uniteBuddies(pTag);
 
 }
-void* srealloc(void* oldp, size_t size){
-    initializeMem();
-    if(size == 0 || size > 1e8){
+
+void *srealloc(void *oldp, size_t size) {
+    if (size == 0 || size > 1e8) {
         return NULL;
     }
-    if(oldp == NULL){return smalloc(size);}
+    if (oldp == NULL) { return smalloc(size); }
 
-    Tag* oldTag = (Tag*)((char*)oldp - TagSize);
-    if(size <= oldTag->size){
+    Tag *oldTag = (Tag *) ((char *) oldp - TagSize);
+    if (size <= oldTag->size) {
         return oldp;
     }
-    if(checkMyBuddies(oldTag, size)){
-        Tag* oldData = oldTag;
-        int oldSize = oldTag->size;
-        Tag* startOfBlock = uniteBuddies(oldTag);
-        std::memmove(startOfBlock, (char*)oldData + TagSize, oldSize);
+    if (checkMyBuddies(oldTag, size)) {
+        Tag *oldData = oldTag;
+        size_t oldSize = oldTag->size;
+        Tag *startOfBlock = uniteBuddies(oldTag);
+        std::memmove(startOfBlock, (char *) oldData + TagSize, oldSize);
         return startOfBlock;
     }
-    
-    void* res = smalloc(size);
-    if(res == NULL){
+
+    void *res = smalloc(size);
+    if (res == NULL) {
         return NULL;
     }
 
@@ -121,84 +144,82 @@ void* srealloc(void* oldp, size_t size){
 }
 
 
-
-size_t _num_free_blocks(){
+size_t _num_free_blocks() {
     return freeBlocks;
 }
-size_t _num_free_bytes(){
+
+size_t _num_free_bytes() {
     return freeBytes;
 }
-size_t _num_allocated_blocks(){
+
+size_t _num_allocated_blocks() {
     return allocatedBlocks;
 }
-size_t _num_allocated_bytes(){
+
+size_t _num_allocated_bytes() {
     return allocatedBytes;
 }
-size_t _num_meta_data_bytes(){
-    return TagSize*numTags;
+
+size_t _num_meta_data_bytes() {
+    return TagSize * numTags;
 }
-size_t _size_meta_data(){
+
+size_t _size_meta_data() {
     return TagSize;
 }
 
 
+void initialMetaData(Tag *tag) {
+    tag->cookie = Cookie;
+    tag->size = BLOCKSIZE - TagSize;
+    tag->is_free = true;
+    tag->prev = NULL;
+    tag->next = NULL;
+}
 
 
-
-
-void initialMetaData(Tag* tag){
- tag->cookie = Cookie;
- tag->size = BLOCKSIZE - TagSize;
- tag ->is_free = true;
- tag->prev = NULL;
- tag->next = NULL;
- }
-
-
-
-
-
-
-void* allign(){
-    void* start = sbrk(0);
-    int inv = MEMSIZE - (unsigned long)start%MEMSIZE;
+void *allign() {
+    void *start = sbrk(0);
+    size_t inv = MEMSIZE - (unsigned long) start % MEMSIZE;
     return sbrk(inv);
 }
-void initializeMem(){
-    if(wasMemoryInitialized)return;
-    void* start = allign();
+
+void initializeMem() {
+    if (wasMemoryInitialized)return;
+    void *start = allign();
     start = sbrk(MEMSIZE);
 
-    for(int i=0; i<32; ++i){
-        Tag* toInit = (Tag*)((char*)start+i*BLOCKSIZE);
+    for (size_t i = 0; i < 32; ++i) {
+        Tag *toInit = (Tag *) ((char *) start + i * BLOCKSIZE);
         initialMetaData(toInit);
-        if(i==0){
+        if (i == 0) {
             blockListHead = toInit;
-            toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE);
+            toInit->next = (Tag *) ((char *) start + (i + 1) * BLOCKSIZE);
             continue;
-            }
-        if(i==31){
-            toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE);
+        }
+        if (i == 31) {
+            toInit->prev = (Tag *) ((char *) start + (i - 1) * BLOCKSIZE);
             toInit->next = NULL;
             continue;
-            }
-        toInit->next = (Tag*)((char*)start+(i+1)*BLOCKSIZE);
-        toInit->prev = (Tag*)((char*)start+(i-1)*BLOCKSIZE);
+        }
+        toInit->next = (Tag *) ((char *) start + (i + 1) * BLOCKSIZE);
+        toInit->prev = (Tag *) ((char *) start + (i - 1) * BLOCKSIZE);
     }
     wasMemoryInitialized = true;
     numTags = 32;
-    freeBytes = 32*(BLOCKSIZE-TagSize);
+    freeBytes = 32 * (BLOCKSIZE - TagSize);
     freeBlocks = 32;
     allocatedBlocks = 32;
     allocatedBytes = freeBytes;
 }
 
 
-void trimmBlock(Tag* block, int size){
-    while((unsigned int)block->size > 2*((unsigned int)size +(unsigned int)TagSize)- (unsigned int)TagSize){
-        int newSize = block->size/2;// assuming a whole number 
-        Tag* rightTag = (Tag*)((char*)block + newSize);
-        if(block == blockListTail){
+void trimmBlock(Tag *block, size_t size) {
+    while (block->size  >= (size+TagSize)*2-TagSize) {
+        size_t newSize = ((block->size + TagSize) / 2) - TagSize;// assuming a whole number
+
+        Tag *rightTag = (Tag *) ((char *)block + (newSize + TagSize));
+        if (block == blockListTail) {
             blockListTail = rightTag;
         }
         rightTag->next = block->next;
@@ -208,52 +229,69 @@ void trimmBlock(Tag* block, int size){
         rightTag->prev = block;
         rightTag->size = newSize;
         rightTag->cookie = Cookie;
-        
+
         freeBlocks++;
-        freeBytes-=TagSize;
+        freeBytes -= TagSize;
+        allocatedBytes -= TagSize;
         numTags++;
         allocatedBlocks++;
-        allocatedBytes-=TagSize;
     }
 }
 
 
-Tag* smallestFits(int size){
-    Tag* current = blockListHead;
-    Tag* bestFit = blockListHead;
-    while(current != NULL){
-        if((unsigned int)current->size >= (unsigned int)size && ((unsigned int)current->size < (unsigned int)bestFit->size)){
-            bestFit = current;
+Tag *smallestFits(size_t size) {
+    std::cout<<"smallestFit"<< std::endl;
+    Tag *current = blockListHead;
+    Tag *bestFit = NULL;
+
+    while (current != NULL) {
+    std::cout<<"current: "<< current << std::endl;
+    std::cout<<"current->size "<< (Tag*)current->size << std::endl;
+    std::cout<<"size: "<<size << std::endl;
+        if (current->size >= size && current->is_free) {
+            if (bestFit == NULL || (current->size < bestFit->size)) {
+                bestFit = current;
+            }
         }
+        std::cout<<"next: "<<current->next << std::endl;
         current = current->next;
     }
+    std::cout<<"null? : "<< bestFit << std::endl;
     return bestFit;
 }
 
-void* mmapAlloc(int size){
-    void* block = mmap(NULL,size+TagSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+void *mmapAlloc(size_t size) {
+    void *block = mmap(NULL, size + TagSize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
     if (block == MAP_FAILED) {
         return NULL;
     }
-    ((Tag*)block)->prev = NULL;
-    ((Tag*)block)->next = NULL;
-    ((Tag*)block)->cookie = Cookie;
-    ((Tag*)block)->is_free = false;
-    ((Tag*)block)->size = size;
-    return (Tag*)block + TagSize;
+
+    Tag * tag=(Tag *) block;
+    tag->prev = NULL;
+    tag->next = NULL;
+    tag->cookie = Cookie;
+    tag->is_free = false;
+    tag->size = size;
+
+    allocatedBlocks++;
+    allocatedBytes += size;
+    numTags++;
+
+    return (char *) block + TagSize;
 }
 
-Tag* uniteBuddies(Tag* tag){
-    Tag* buddy = myBuddy(tag, tag->size);
-    while((unsigned int)tag->size < (unsigned int)(BLOCKSIZE-TagSize) && buddy->is_free){
-        Tag* left = buddy<tag ? buddy:tag ;
-        Tag* right = buddy==left ? tag : buddy ;
-        left->size += TagSize+right->size;
+Tag *uniteBuddies(Tag *tag) {
+    Tag* current = tag;
+    Tag *buddy = myBuddy(current, current->size);
+    while ( (current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size==current->size) {
+        Tag *left = buddy < current ? buddy : current;
+        Tag *right = buddy == left ? current : buddy;
+        left->size += TagSize + right->size;
         left->next = right->next;
-        if(right->next != NULL)
+        if (right->next != NULL)
             (right->next)->prev = left;
-        tag = left;
-        buddy = myBuddy(tag, tag->size);
+        current = left;
+        buddy = myBuddy(current, current->size);
 
         numTags--;
         freeBytes += TagSize;
@@ -261,28 +299,32 @@ Tag* uniteBuddies(Tag* tag){
         allocatedBlocks--;
         allocatedBytes += TagSize;
     }
-    return tag;
+    return current;
 }
 
-void mmapFree(void* address){
-    munmap(address, ((Tag*)address)->size+TagSize);
+void mmapFree(void *address) {
+    allocatedBlocks--;
+    numTags--;
+    allocatedBytes -= ((Tag *) address)->size;
+
+    munmap(address, ((Tag *) address)->size + TagSize);
 }
 
-bool checkMyBuddies(Tag* tag, int destSize){
-    Tag* curr = tag;
-    Tag* buddy = myBuddy(tag, curr->size);
-    int size = tag->size;
-    while(size < (BLOCKSIZE-TagSize) && buddy->is_free){
-        Tag* left = buddy<tag ? buddy:tag ;
+bool checkMyBuddies(Tag *tag, size_t destSize) {
+    Tag *curr = tag;
+    Tag *buddy = myBuddy(tag, curr->size);
+    size_t size = tag->size;
+    while (size < (BLOCKSIZE - TagSize) && buddy->is_free) {
+        Tag *left = buddy < tag ? buddy : tag;
         //Tag* right = buddy==left ? tag : buddy ;
-        size = (size+buddy->size + TagSize);
-        if(size >= destSize){return true;}
+        size = (size + buddy->size + TagSize);
+        if (size >= destSize) { return true; }
         curr = left;
         buddy = myBuddy(curr, size);
     }
     return false;
 }
 
-Tag* myBuddy(Tag* tag, int size){
-    return (Tag*)((unsigned long)tag ^ (unsigned long)size);
+Tag *myBuddy(Tag *tag, size_t size) {
+    return (Tag *) ((unsigned long) tag ^ (unsigned long) size);
 }
