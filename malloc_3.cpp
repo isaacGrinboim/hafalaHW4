@@ -304,38 +304,16 @@ Tag *uniteBuddies(Tag *tag) {
     }
     return current;
 }
-/*
-Tag *uniteBuddies2(Tag *tag, int &i) {
-    int j = 0;
-    Tag *current = tag;
-    Tag *buddy = myBuddy(current, current->size + TagSize);
-    while ((current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size == current->size && j < i) {
-        Tag *left = buddy < current ? buddy : current;
-        Tag *right = buddy == left ? current : buddy;
-        left->size += TagSize + right->size;
-        left->next = right->next;
-        if (right->next != NULL)
-            (right->next)->prev = left;
-        current = left;
-        buddy = myBuddy(current, current->size + TagSize);
-
-        numTags--;
-        freeBytes += TagSize;
-        freeBlocks--;
-        allocatedBlocks--;
-        allocatedBytes += TagSize;
-        ++j;
-    }
-    return current;
-}*/
 
 Tag *uniteBuddies2(Tag *tag, int* i) {
     int j = 0;
     Tag *current = tag;
     Tag *buddy = myBuddy(current, current->size + TagSize);
-    while ((current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size == current->size && j <= *i) {
+    while ((current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size == current->size && j < *i) {
         Tag *left = buddy < current ? buddy : current;
         Tag *right = buddy == left ? current : buddy;
+        freeBytes -= (buddy->size);
+
         left->size += TagSize + right->size;
         left->next = right->next;
         if (right->next != NULL)
@@ -344,10 +322,14 @@ Tag *uniteBuddies2(Tag *tag, int* i) {
         buddy = myBuddy(current, current->size + TagSize);
 
         numTags--;
-        freeBytes += TagSize;
         freeBlocks--;
         allocatedBlocks--;
-        allocatedBytes += TagSize;
+        allocatedBytes += (TagSize);
+        
+
+
+
+
         ++j;
     }
     return current;
