@@ -75,7 +75,9 @@ void *smalloc(size_t size) {
 
 
     trimmBlock(bestFit, size);
-
+    if(bestFit->cookie!=Cookie){
+        exit(0xdeadbeef);
+    }
     bestFit->is_free = false;
     freeBlocks--;
     freeBytes -= bestFit->size;
@@ -101,6 +103,9 @@ void *scalloc(size_t num, size_t size) {
 void sfree(void *p) {
     if (p == NULL) { return; }
     Tag *pTag = (Tag *) ((char *) p - TagSize);
+    if(pTag->cookie!=Cookie){
+        exit(0xdeadbeef);
+    }
     if(pTag == NULL){ return; }
     if (pTag->is_free)
         return;
@@ -122,6 +127,9 @@ void *srealloc(void *oldp, size_t size) {
     if (oldp == NULL) { return smalloc(size); }
 
     Tag *oldTag = (Tag *) ((char *) oldp - TagSize);
+    if(oldTag->cookie!=Cookie){
+        exit(0xdeadbeef);
+    }
     if (size <= oldTag->size) {
         return oldp;
     }
@@ -131,8 +139,8 @@ void *srealloc(void *oldp, size_t size) {
         size_t oldSize = oldTag->size;
         Tag *startOfBlock = uniteBuddies2(oldTag, &i);
         //Tag *startOfBlock = uniteBuddies2(oldTag, size);
-        std::memmove(startOfBlock, (char *) oldData + TagSize, oldSize);
-        return startOfBlock;
+        std::memmove((char *)startOfBlock + TagSize, (char *) oldData + TagSize, oldSize);
+        return (char *)startOfBlock + TagSize;
     }
 
     void *res = smalloc(size);
@@ -219,6 +227,7 @@ void initializeMem() {
 
 
 void trimmBlock(Tag *block, size_t size) {
+
     while (block->size  >= (size+TagSize)*2-TagSize) {
         size_t newSize = ((block->size + TagSize) / 2) - TagSize;// assuming a whole number
 
