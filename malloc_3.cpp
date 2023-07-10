@@ -76,7 +76,7 @@ void *smalloc(size_t size) {
 
     trimmBlock(bestFit, size);
     if(bestFit->cookie!=Cookie){
-        exit(0xdeadbeef);
+        exit(0xDEADBEEF);
     }
     bestFit->is_free = false;
     freeBlocks--;
@@ -103,10 +103,11 @@ void *scalloc(size_t num, size_t size) {
 void sfree(void *p) {
     if (p == NULL) { return; }
     Tag *pTag = (Tag *) ((char *) p - TagSize);
-    if(pTag->cookie!=Cookie){
-        exit(0xdeadbeef);
-    }
+    
     if(pTag == NULL){ return; }
+    if(pTag->cookie!=Cookie){
+        exit(0xDEADBEEF);
+    }
     if (pTag->is_free)
         return;
     if (pTag->size >= BLOCKSIZE) {
@@ -128,7 +129,7 @@ void *srealloc(void *oldp, size_t size) {
 
     Tag *oldTag = (Tag *) ((char *) oldp - TagSize);
     if(oldTag->cookie!=Cookie){
-        exit(0xdeadbeef);
+        exit(0xDEADBEEF);
     }
     if (size <= oldTag->size) {
         return oldp;
@@ -149,6 +150,9 @@ void *srealloc(void *oldp, size_t size) {
     }
 
     std::memmove(res, oldp, oldTag->size);
+    if(oldTag->cookie!=Cookie){
+        exit(0xDEADBEEF);
+    }
     oldTag->is_free = true;
     freeBytes += oldTag->size;
     freeBlocks += 1;
@@ -227,7 +231,9 @@ void initializeMem() {
 
 
 void trimmBlock(Tag *block, size_t size) {
-
+	if(block->cookie != Cookie){
+		exit(0xDEADBEEF);
+	}
     while (block->size  >= (size+TagSize)*2-TagSize) {
         size_t newSize = ((block->size + TagSize) / 2) - TagSize;// assuming a whole number
 
@@ -243,6 +249,9 @@ void trimmBlock(Tag *block, size_t size) {
         rightTag->prev = block;
         rightTag->size = newSize;
         rightTag->cookie = Cookie;
+        if(block->cookie != Cookie || rightTag->cookie != Cookie){
+			exit(0xDEADBEEF);
+		}
 
         freeBlocks++;
         freeBytes -= TagSize;
@@ -257,6 +266,9 @@ Tag *smallestFits(size_t size) {
 
     Tag *current = blockListHead;
     Tag *bestFit = NULL;
+    if(current->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
 
     while (current != NULL) {
 
@@ -265,7 +277,9 @@ Tag *smallestFits(size_t size) {
                 bestFit = current;
             }
         }
-
+		if(current->cookie != Cookie){
+			exit(0xDEADBEEF);
+		}
         current = current->next;
     }
 
@@ -294,10 +308,19 @@ void *mmapAlloc(size_t size) {
 
 Tag *uniteBuddies(Tag *tag) {
     Tag* current = tag;
+    if(current->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     Tag *buddy = myBuddy(current, current->size + TagSize);
+    if(current->size + TagSize < BLOCKSIZE && buddy->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     while ( (current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size==current->size) {
         Tag *left = buddy < current ? buddy : current;
         Tag *right = buddy == left ? current : buddy;
+        if(left->cookie != Cookie || right->cookie != Cookie){
+				exit(0xDEADBEEF);
+		}
         left->size += TagSize + right->size;
         left->next = right->next;
         if (right->next != NULL)
@@ -317,10 +340,19 @@ Tag *uniteBuddies(Tag *tag) {
 Tag *uniteBuddies2(Tag *tag, int* i) {
     int j = 0;
     Tag *current = tag;
+    if(current->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     Tag *buddy = myBuddy(current, current->size + TagSize);
+    if(current->size + TagSize < BLOCKSIZE && buddy->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     while ((current->size + TagSize < BLOCKSIZE) && buddy->is_free && buddy->size == current->size && j < *i) {
         Tag *left = buddy < current ? buddy : current;
         Tag *right = buddy == left ? current : buddy;
+        if(left->cookie != Cookie || right->cookie != Cookie){
+				exit(0xDEADBEEF);
+		}
         freeBytes -= (buddy->size);
 
         left->size += TagSize + right->size;
@@ -356,10 +388,19 @@ void mmapFree(void *address) {
 
 bool checkMyBuddies(Tag *tag, size_t destSize, int *i) {
     Tag *curr = tag;
+    if(curr->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     Tag *buddy = myBuddy(tag, curr->size + TagSize);
     size_t size = tag->size;
+    if(size < BLOCKSIZE - TagSize && buddy->cookie != Cookie){
+			exit(0xDEADBEEF);
+	}
     while (size < (BLOCKSIZE - TagSize) && buddy->is_free) {
         Tag *left = buddy < tag ? buddy : tag;
+        if(buddy->cookie != Cookie){
+				exit(0xDEADBEEF);
+		}
         //Tag* right = buddy==left ? tag : buddy ;
         size = (size + buddy->size + TagSize);
         ++(*i);
